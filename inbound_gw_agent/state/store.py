@@ -132,6 +132,35 @@ class StateStore:
             results.append(d)
         return results
 
+    def get_messages_by_date_range(self, start_date: str, end_date: str) -> list[dict]:
+        """KST 기준 날짜 범위(YYYY-MM-DD)로 메시지를 조회한다."""
+        start_kst = datetime.strptime(start_date, "%Y-%m-%d").replace(tzinfo=KST)
+        end_kst = datetime.strptime(end_date, "%Y-%m-%d").replace(tzinfo=KST) + timedelta(days=1)
+        rows = self._conn.execute(
+            """SELECT id, source, sender, subject, intent_type, jira_key,
+                      COALESCE(received_at, processed_at) AS received_at,
+                      processed_at,
+                      mine, personal_priority, action_required, email_category, suggested_action,
+                      SUBSTR(body, 1, 100) AS body_preview
+               FROM processed_messages
+               WHERE COALESCE(received_at, processed_at) >= ? AND COALESCE(received_at, processed_at) < ?
+               ORDER BY COALESCE(received_at, processed_at) DESC""",
+            (start_kst.astimezone(timezone.utc).isoformat(), end_kst.astimezone(timezone.utc).isoformat()),
+        ).fetchall()
+        keys = (
+            "id", "source", "sender", "subject", "intent_type", "jira_key",
+            "received_at", "processed_at",
+            "mine", "personal_priority", "action_required", "email_category", "suggested_action",
+            "body_preview",
+        )
+        results = []
+        for row in rows:
+            d = dict(zip(keys, row))
+            d["mine"] = d["mine"] == "1" if d["mine"] is not None else None
+            d["action_required"] = d["action_required"] == "1" if d["action_required"] is not None else None
+            results.append(d)
+        return results
+
     def get_message_by_id(self, message_id: str) -> dict | None:
         row = self._conn.execute(
             """SELECT id, source, sender, subject, intent_type, jira_key,
@@ -158,6 +187,13 @@ class StateStore:
             (jira_key, message_id),
         )
         self._conn.commit()
+
+    def delete_message(self, message_id: str) -> bool:
+        cur = self._conn.execute(
+            "DELETE FROM processed_messages WHERE id = ?", (message_id,)
+        )
+        self._conn.commit()
+        return cur.rowcount > 0
 
     def get_delta_token(self, key: str) -> str | None:
         row = self._conn.execute(

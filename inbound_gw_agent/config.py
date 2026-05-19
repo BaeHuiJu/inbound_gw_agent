@@ -15,6 +15,9 @@ class Settings(BaseSettings):
     jira_email: str = ""
     jira_api_token: str = ""
     jira_project_key: str = ""
+    jira_story_epic_key: str = ""       # 스토리 Epic Key (예: GW-5)
+    jira_story_sprint_name: str = ""    # 스프린트 이름 (예: 2026 디지털혁신본부 업무)
+    jira_account_id: str = ""           # Jira 로그인 ID (Server) 또는 accountId (Cloud) — 담당자·보고자용
 
     # Ollama
     ollama_base_url: str = "http://localhost:11434"
