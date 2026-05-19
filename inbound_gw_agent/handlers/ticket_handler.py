@@ -49,6 +49,17 @@ JSON 외 다른 텍스트는 포함하지 마세요.
 
 _EMAIL_RE = re.compile(r"<(.+?)>")
 
+_ERROR_ANALYZE_SYSTEM = """\
+You are an IT error analysis expert. Analyze the email below and respond ONLY with valid JSON.
+Do NOT include any explanation, markdown, or text outside the JSON object.
+If the email is not an error notification, make your best guess based on available content.
+
+Required JSON format (all fields mandatory):
+{"system":"affected system or service name","occurred_at":"error time string or null","error_message":"one-line error summary","impact":"scope of impact","causes":[{"desc":"cause description","likelihood":"high|medium|low"}],"immediate_action":"immediate steps to take","prevention":"steps to prevent recurrence"}
+
+Respond in Korean. Output the JSON object only.
+"""
+
 
 def _extract_sender_name(sender: str) -> str:
     """'홍길동 <hong@mastern.co.kr>' → '홍길동', 'hong@mastern.co.kr' → 'hong'"""
@@ -72,6 +83,11 @@ class JiraTicketHandler(BaseHandler):
         self._project = settings.jira_project_key
         self._ollama = ollama.AsyncClient(host=settings.ollama_base_url)
         self._model = settings.ollama_model
+        self._cloud = ".atlassian.net" in (settings.jira_server or "").lower()
+
+    def _user_ref(self, account_id: str) -> dict:
+        """Cloud는 accountId, Server/DC는 name 필드로 사용자를 참조한다."""
+        return {"accountId": account_id} if self._cloud else {"name": account_id}
 
     async def handle(self, msg: InboundMessage, intent: ClassifiedIntent) -> str | None:
         summary = intent.summary or (msg.subject or msg.body[:80])
@@ -86,13 +102,25 @@ class JiraTicketHandler(BaseHandler):
             "labels": [f"auto-{msg.source.value}", f"category-{intent.type.value}"],
         }
 
-        try:
-            issue = await asyncio.to_thread(self._jira.create_issue, fields=fields)
-            log.info("jira_ticket_created", key=issue.key, intent=intent.type.value)
-            return issue.key
-        except Exception as exc:
-            log.error("jira_ticket_failed", error=str(exc), msg_id=msg.id)
-            return None
+        account_id = get_settings().jira_account_id.strip()
+        if account_id:
+            ref = self._user_ref(account_id)
+            fields["assignee"] = ref
+            fields["reporter"] = ref
+
+        for attempt in ["full", "no_assignee"]:
+            try:
+                issue = await asyncio.to_thread(self._jira.create_issue, fields=fields)
+                log.info("jira_ticket_created", key=issue.key, intent=intent.type.value)
+                return issue.key
+            except Exception as exc:
+                if attempt == "full" and ("assignee" in fields or "reporter" in fields):
+                    fields.pop("assignee", None)
+                    fields.pop("reporter", None)
+                else:
+                    log.error("jira_ticket_failed", error=str(exc), msg_id=msg.id)
+                    return None
+        return None
 
     async def _summarize(self, msg: InboundMessage, intent: ClassifiedIntent) -> str:
         user_content = (
@@ -146,41 +174,177 @@ class JiraTicketHandler(BaseHandler):
             log.warning("story_analyze_failed", error=str(exc)[:120])
             return {"team": "", "task_summary": msg.subject or "", "deadline_str": None, "is_overdue": False}
 
-    async def create_story(self, msg: InboundMessage, md: float, team: str, task_summary: str) -> str | None:
+    async def analyze_error(self, msg: InboundMessage) -> dict:
+        """오류 알림 메일에서 시스템·원인·조치 방법을 추출한다. 실패 시 빈값 dict 반환."""
+        import json as _json
+        import re as _re
+        user_content = (
+            f"발신자: {msg.sender}\n"
+            f"제목: {msg.subject or '(없음)'}\n"
+            f"본문:\n{msg.body[:3000]}"
+        )
+        raw = ""
+        try:
+            response = await self._ollama.chat(
+                model=self._model,
+                messages=[
+                    {"role": "system", "content": _ERROR_ANALYZE_SYSTEM},
+                    {"role": "user", "content": user_content},
+                ],
+            )
+            raw = response.message.content.strip()
+
+            # 방법 1: 직접 파싱
+            try:
+                return _json.loads(raw)
+            except _json.JSONDecodeError:
+                pass
+
+            # 방법 2: 마크다운 코드 블록에서 추출
+            if "```" in raw:
+                for part in raw.split("```")[1::2]:
+                    candidate = part.lstrip("json \n\r").strip()
+                    try:
+                        return _json.loads(candidate)
+                    except _json.JSONDecodeError:
+                        pass
+
+            # 방법 3: 중괄호 범위로 JSON 객체 추출
+            m = _re.search(r"\{.*\}", raw, _re.DOTALL)
+            if m:
+                try:
+                    return _json.loads(m.group())
+                except _json.JSONDecodeError:
+                    pass
+
+            # 모든 파싱 실패 → raw 응답을 immediate_action에 담아 반환
+            log.warning("error_analyze_no_json", raw=raw[:200])
+            return {
+                "system": msg.subject or "",
+                "occurred_at": None,
+                "error_message": "(LLM이 JSON을 반환하지 않았습니다)",
+                "impact": "",
+                "causes": [],
+                "immediate_action": raw[:1000] if raw else "(응답 없음)",
+                "prevention": "",
+            }
+        except Exception as exc:
+            log.warning("error_analyze_failed", error=str(exc)[:120])
+            return {
+                "system": "",
+                "occurred_at": None,
+                "error_message": msg.subject or "",
+                "impact": "",
+                "causes": [],
+                "immediate_action": raw[:500] if raw else "(LLM 호출 실패)",
+                "prevention": "",
+            }
+
+    def _find_sprint_id(self, sprint_name: str) -> int | None:
+        """프로젝트 보드에서 sprint_name과 일치하는 Sprint ID를 반환한다."""
+        try:
+            boards = self._jira.boards(projectKeyOrID=self._project)
+            for board in boards:
+                try:
+                    sprints = self._jira.sprints(board.id, state="active,future")
+                    for sprint in sprints:
+                        if sprint.name == sprint_name:
+                            return sprint.id
+                except Exception:
+                    continue
+        except Exception as exc:
+            log.warning("sprint_lookup_failed", error=str(exc)[:120])
+        return None
+
+    async def create_story(
+        self,
+        msg: InboundMessage,
+        md: float,
+        team: str,
+        task_summary: str,
+        labels: list[str] | None = None,
+        due_date: str | None = None,
+        start_date: str | None = None,
+        priority: str | None = None,
+        custom_title: str | None = None,
+    ) -> str | None:
         """Jira Story 이슈를 생성하고 key를 반환한다."""
         settings = get_settings()
         md_str = str(int(md)) if md == int(md) else str(md)
-        summary = f"[{team}] {task_summary} ({md_str} M/D)"
+        summary = custom_title if custom_title else f"[{team}] {task_summary} ({md_str} M/D)"
         sender_name = _extract_sender_name(msg.sender)
+        user_name = settings.user_name or ""
         description = (
             f"요청자 : {sender_name}\n"
             f"요청 팀 : {team}\n\n"
             f"핵심 업무 : {task_summary}\n"
             f"예상 소요 : {md_str} M/D\n\n"
+            f"담당자 : {user_name}\n"
+            f"보고자 : {user_name}\n\n"
             f"[메일 본문]\n{msg.body}"
         )
+        all_labels = [f"auto-{msg.source.value}", "story-from-mail"]
+        if labels:
+            all_labels.extend(labels)
         fields: dict = {
             "project": {"key": self._project},
             "summary": summary,
             "description": description,
             "issuetype": {"name": "Story"},
-            "labels": [f"auto-{msg.source.value}", "story-from-mail"],
+            "labels": all_labels,
         }
-        if settings.user_name:
-            fields["assignee"] = {"name": settings.user_name}
-        try:
-            issue = await asyncio.to_thread(self._jira.create_issue, fields=fields)
-            log.info("jira_story_created", key=issue.key)
-            return issue.key
-        except Exception as exc:
-            if "assignee" in fields:
-                fields.pop("assignee")
-                try:
-                    issue = await asyncio.to_thread(self._jira.create_issue, fields=fields)
-                    log.info("jira_story_created_no_assignee", key=issue.key)
-                    return issue.key
-                except Exception as exc2:
-                    log.error("jira_story_failed", error=str(exc2))
+
+        if priority:
+            fields["priority"] = {"name": priority}
+        if due_date:
+            fields["duedate"] = due_date
+        if start_date:
+            fields["customfield_10015"] = start_date
+
+        # Epic 연결 (Classic 방식 먼저)
+        epic_key = settings.jira_story_epic_key.strip()
+        if epic_key:
+            fields["customfield_10014"] = epic_key
+
+        # Sprint 연결
+        sprint_name = settings.jira_story_sprint_name.strip()
+        if sprint_name:
+            sprint_id = await asyncio.to_thread(self._find_sprint_id, sprint_name)
+            if sprint_id:
+                fields["customfield_10020"] = sprint_id
+                log.info("sprint_resolved", sprint_id=sprint_id, sprint_name=sprint_name)
+            else:
+                log.warning("sprint_not_found", sprint_name=sprint_name)
+
+        account_id = settings.jira_account_id.strip()
+        if account_id:
+            ref = self._user_ref(account_id)
+            fields["assignee"] = ref
+            fields["reporter"] = ref
+
+        # 생성 시도 — 실패 시 필드 제거 후 재시도
+        for attempt in ["full", "no_assignee", "nextgen_epic", "no_epic", "no_startdate"]:
+            try:
+                issue = await asyncio.to_thread(self._jira.create_issue, fields=fields)
+                log.info("jira_story_created", key=issue.key, attempt=attempt)
+                return issue.key
+            except Exception as exc:
+                err = str(exc)
+                if attempt == "full" and ("assignee" in fields or "reporter" in fields):
+                    fields.pop("assignee", None)
+                    fields.pop("reporter", None)
+                elif attempt == "no_assignee" and "customfield_10014" in fields:
+                    # Classic Epic 실패 → Next-gen parent 방식 시도
+                    fields.pop("customfield_10014")
+                    if epic_key:
+                        fields["parent"] = {"key": epic_key}
+                elif attempt == "nextgen_epic":
+                    # Epic 없이 시도
+                    fields.pop("parent", None)
+                elif attempt == "no_epic":
+                    # start date 필드가 지원되지 않는 경우 제거 후 재시도
+                    fields.pop("customfield_10015", None)
+                else:
+                    log.error("jira_story_failed", error=err[:200])
                     return None
-            log.error("jira_story_failed", error=str(exc))
-            return None
+        return None

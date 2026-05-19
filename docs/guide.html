@@ -1,0 +1,911 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MASTERN 인바운드 자동화 에이전트 — 사용 가이드</title>
+<style>
+  :root {
+    --bg: #0f1117;
+    --bg-s: #161b27;
+    --bg-card: #1a2035;
+    --bd: #232d45;
+    --acc: #2b6dff;
+    --acc2: #7c3aed;
+    --tx: #e8eaf0;
+    --tx2: #9aa3b8;
+    --tx3: #5a6480;
+    --c-ok: #2eca8a;
+    --c-warn: #f5a623;
+    --c-crit: #ff4444;
+    --c-info: #38bdf8;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif;
+    background: var(--bg);
+    color: var(--tx);
+    line-height: 1.65;
+    font-size: 14px;
+  }
+  /* ── LAYOUT ── */
+  .layout { display: flex; min-height: 100vh; }
+  .sidebar {
+    width: 260px;
+    flex-shrink: 0;
+    background: var(--bg-s);
+    border-right: 1px solid var(--bd);
+    position: sticky;
+    top: 0;
+    height: 100vh;
+    overflow-y: auto;
+    padding: 24px 0 40px;
+  }
+  .sidebar-logo {
+    padding: 0 20px 20px;
+    border-bottom: 1px solid var(--bd);
+    margin-bottom: 16px;
+  }
+  .sidebar-logo .logo-name {
+    font-size: 15px;
+    font-weight: 800;
+    letter-spacing: .04em;
+    color: var(--tx);
+    margin-top: 6px;
+  }
+  .sidebar-logo .logo-sub { font-size: 11px; color: var(--tx3); margin-top: 2px; }
+  .nav-group { margin-bottom: 4px; }
+  .nav-group-lbl {
+    font-size: 10px;
+    font-weight: 700;
+    color: var(--tx3);
+    letter-spacing: .08em;
+    text-transform: uppercase;
+    padding: 10px 20px 4px;
+  }
+  .nav-item {
+    display: block;
+    padding: 7px 20px;
+    color: var(--tx2);
+    text-decoration: none;
+    font-size: 13px;
+    transition: all .12s;
+    border-left: 2px solid transparent;
+  }
+  .nav-item:hover { color: var(--tx); background: rgba(255,255,255,.04); }
+  .nav-item.active { color: #fff; border-left-color: var(--acc); background: rgba(43,109,255,.1); }
+  .content { flex: 1; padding: 48px 60px; max-width: 900px; }
+
+  /* ── SECTIONS ── */
+  section { margin-bottom: 60px; }
+  .section-badge {
+    display: inline-block;
+    font-size: 10px;
+    font-weight: 700;
+    padding: 2px 8px;
+    border-radius: 4px;
+    letter-spacing: .06em;
+    text-transform: uppercase;
+    margin-bottom: 10px;
+  }
+  .badge-setup  { background: rgba(43,109,255,.15);  color: #6fa3ff; }
+  .badge-use    { background: rgba(46,202,138,.15);  color: #4cd9a0; }
+  .badge-config { background: rgba(245,166,35,.15);  color: #f5a623; }
+  .badge-jira   { background: rgba(124,58,237,.15);  color: #a78bfa; }
+  .badge-faq    { background: rgba(56,189,248,.15);  color: #38bdf8; }
+  h1 { font-size: 28px; font-weight: 900; letter-spacing: -.03em; color: #fff; margin-bottom: 6px; }
+  h2 { font-size: 20px; font-weight: 800; color: #fff; margin-bottom: 16px; }
+  h3 { font-size: 14px; font-weight: 700; color: var(--tx); margin: 20px 0 8px; }
+  p  { color: var(--tx2); margin-bottom: 12px; }
+
+  /* ── HERO ── */
+  .hero {
+    background: linear-gradient(135deg, rgba(43,109,255,.12), rgba(124,58,237,.08));
+    border: 1px solid rgba(43,109,255,.2);
+    border-radius: 14px;
+    padding: 32px 36px;
+    margin-bottom: 48px;
+  }
+  .hero h1 { font-size: 24px; }
+  .hero p { margin-bottom: 0; }
+  .hero-tags { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 14px; }
+  .tag {
+    font-size: 11px;
+    font-weight: 600;
+    padding: 3px 10px;
+    border-radius: 20px;
+    background: rgba(255,255,255,.06);
+    color: var(--tx2);
+    border: 1px solid var(--bd);
+  }
+
+  /* ── CARDS ── */
+  .card-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 16px; }
+  .card {
+    background: var(--bg-card);
+    border: 1px solid var(--bd);
+    border-radius: 10px;
+    padding: 16px 18px;
+  }
+  .card-icon { font-size: 20px; margin-bottom: 8px; }
+  .card-title { font-size: 13px; font-weight: 700; color: var(--tx); margin-bottom: 4px; }
+  .card-desc  { font-size: 12px; color: var(--tx2); }
+
+  /* ── STEPS ── */
+  .steps { counter-reset: step; display: flex; flex-direction: column; gap: 0; }
+  .step {
+    display: flex;
+    gap: 16px;
+    padding: 16px 0;
+    border-bottom: 1px solid var(--bd);
+    position: relative;
+  }
+  .step:last-child { border-bottom: none; }
+  .step-num {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    background: var(--acc);
+    color: #fff;
+    font-size: 12px;
+    font-weight: 800;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    margin-top: 2px;
+  }
+  .step-body { flex: 1; }
+  .step-title { font-size: 13.5px; font-weight: 700; color: var(--tx); margin-bottom: 4px; }
+  .step-desc  { font-size: 12.5px; color: var(--tx2); }
+
+  /* ── CODE ── */
+  pre, code {
+    font-family: 'Cascadia Code', 'Fira Code', Consolas, monospace;
+    font-size: 12.5px;
+  }
+  pre {
+    background: #0d1117;
+    border: 1px solid var(--bd);
+    border-radius: 8px;
+    padding: 14px 16px;
+    overflow-x: auto;
+    margin: 10px 0 16px;
+    color: #c9d1d9;
+    line-height: 1.7;
+  }
+  code {
+    background: rgba(255,255,255,.07);
+    border-radius: 4px;
+    padding: 1px 5px;
+    color: #c9d1d9;
+    font-size: 12px;
+  }
+  pre code { background: none; padding: 0; }
+
+  /* ── ENV TABLE ── */
+  .env-table { width: 100%; border-collapse: collapse; margin: 12px 0 20px; }
+  .env-table th {
+    text-align: left;
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--tx3);
+    letter-spacing: .06em;
+    text-transform: uppercase;
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--bd);
+  }
+  .env-table td {
+    padding: 9px 12px;
+    border-bottom: 1px solid rgba(255,255,255,.04);
+    font-size: 12.5px;
+    vertical-align: top;
+  }
+  .env-table tr:last-child td { border-bottom: none; }
+  .env-table td:first-child { font-family: monospace; color: #c9d1d9; white-space: nowrap; }
+  .env-table td:nth-child(2) { color: var(--tx2); }
+  .env-table td:nth-child(3) { color: var(--tx3); font-style: italic; }
+  .req  { color: var(--c-crit) !important; font-weight: 700; font-style: normal !important; }
+  .opt  { color: var(--tx3) !important; }
+
+  /* ── CALLOUT ── */
+  .callout {
+    border-radius: 8px;
+    padding: 12px 16px;
+    margin: 12px 0 16px;
+    display: flex;
+    gap: 10px;
+    font-size: 12.5px;
+  }
+  .callout-icon { font-size: 16px; flex-shrink: 0; }
+  .callout-info    { background: rgba(56,189,248,.08);  border: 1px solid rgba(56,189,248,.2);  color: #38bdf8; }
+  .callout-warn    { background: rgba(245,166,35,.08);  border: 1px solid rgba(245,166,35,.2);  color: #f5a623; }
+  .callout-success { background: rgba(46,202,138,.08);  border: 1px solid rgba(46,202,138,.2);  color: #4cd9a0; }
+
+  /* ── BADGE TABLE ── */
+  .badge-table { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0 16px; }
+  .sv { display: inline-flex; align-items: center; gap: 5px; padding: 3px 10px; border-radius: 20px; font-size: 11px; font-weight: 700; }
+  .sv-crit { background: rgba(255,68,68,.12);  color: #ff6b6b; }
+  .sv-high { background: rgba(255,142,0,.12);  color: #ffa94d; }
+  .sv-med  { background: rgba(43,109,255,.12); color: #74b2ff; }
+  .sv-info { background: rgba(56,189,248,.12); color: #38bdf8; }
+  .sv-spam { background: rgba(90,100,128,.12); color: #8899aa; }
+  .sv-unk  { background: rgba(90,100,128,.12); color: #8899aa; }
+  .sv-dot  { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+
+  /* ── SCREENSHOT PLACEHOLDER ── */
+  .screen {
+    background: var(--bg-card);
+    border: 1px solid var(--bd);
+    border-radius: 10px;
+    padding: 20px;
+    margin: 12px 0 20px;
+    text-align: center;
+    color: var(--tx3);
+    font-size: 12px;
+  }
+  .screen-inner {
+    background: var(--bg-s);
+    border: 1px solid var(--bd);
+    border-radius: 8px;
+    padding: 12px 16px;
+    text-align: left;
+    font-family: monospace;
+    font-size: 11.5px;
+    color: var(--tx2);
+    margin-top: 10px;
+  }
+
+  /* ── FLOW ── */
+  .flow { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin: 12px 0 20px; }
+  .flow-node {
+    background: var(--bg-card);
+    border: 1px solid var(--bd);
+    border-radius: 8px;
+    padding: 7px 14px;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--tx);
+  }
+  .flow-node.hl { border-color: var(--acc); color: #6fa3ff; background: rgba(43,109,255,.08); }
+  .flow-arrow { color: var(--tx3); font-size: 13px; }
+
+  /* ── RESPONSIVE ── */
+  @media(max-width: 800px) {
+    .layout { flex-direction: column; }
+    .sidebar { width: 100%; height: auto; position: static; }
+    .content { padding: 24px 20px; }
+    .card-grid { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<div class="layout">
+
+<!-- ── SIDEBAR ── -->
+<nav class="sidebar">
+  <div class="sidebar-logo">
+    <div style="font-size:22px;font-weight:900;letter-spacing:.05em;color:#fff">MASTERN</div>
+    <div class="logo-name">인바운드 자동화 에이전트</div>
+    <div class="logo-sub">사용자 가이드 v1.0</div>
+  </div>
+
+  <div class="nav-group">
+    <div class="nav-group-lbl">시작하기</div>
+    <a class="nav-item active" href="#overview">프로젝트 개요</a>
+    <a class="nav-item" href="#install">설치 & 실행</a>
+    <a class="nav-item" href="#auth">Microsoft 인증</a>
+    <a class="nav-item" href="#env">환경 변수 설정</a>
+  </div>
+
+  <div class="nav-group">
+    <div class="nav-group-lbl">기능 사용법</div>
+    <a class="nav-item" href="#dashboard">인바운드 현황</a>
+    <a class="nav-item" href="#report">리포트</a>
+    <a class="nav-item" href="#jira">Jira 연동</a>
+    <a class="nav-item" href="#settings">개인 설정</a>
+  </div>
+
+  <div class="nav-group">
+    <div class="nav-group-lbl">연동</div>
+    <a class="nav-item" href="#webhook">Webhook (Power Automate)</a>
+    <a class="nav-item" href="#ngrok">ngrok 외부 노출</a>
+  </div>
+
+  <div class="nav-group">
+    <div class="nav-group-lbl">참고</div>
+    <a class="nav-item" href="#classification">메일 분류 기준</a>
+    <a class="nav-item" href="#faq">자주 묻는 질문</a>
+  </div>
+</nav>
+
+<!-- ── MAIN CONTENT ── -->
+<main class="content">
+
+  <!-- HERO -->
+  <div class="hero">
+    <div class="section-badge badge-use">MASTERN Inbound Agent</div>
+    <h1>인바운드 자동화 에이전트</h1>
+    <p>Outlook·Teams로 수신되는 업무 메일을 자동으로 분류하고 Jira 티켓을 생성하는 그룹웨어 자동화 시스템입니다.</p>
+    <div class="hero-tags">
+      <span class="tag">Python 3.11+</span>
+      <span class="tag">FastAPI</span>
+      <span class="tag">Microsoft Graph API</span>
+      <span class="tag">Ollama LLM</span>
+      <span class="tag">Jira</span>
+      <span class="tag">Windows</span>
+    </div>
+  </div>
+
+  <!-- ── 1. 프로젝트 개요 ── -->
+  <section id="overview">
+    <div class="section-badge badge-use">개요</div>
+    <h2>프로젝트 개요</h2>
+    <p>이 에이전트는 그룹웨어(Outlook/Teams)로 수신되는 업무 요청 메일을 자동으로 수집·분류하고 Jira 티켓으로 연결하는 자동화 파이프라인입니다.</p>
+
+    <div class="card-grid">
+      <div class="card">
+        <div class="card-icon">📥</div>
+        <div class="card-title">자동 메일 수집</div>
+        <div class="card-desc">Microsoft Graph API를 통해 Outlook 메일을 5분마다 자동 수집합니다.</div>
+      </div>
+      <div class="card">
+        <div class="card-icon">🤖</div>
+        <div class="card-title">AI 자동 분류</div>
+        <div class="card-desc">규칙 기반 + Ollama LLM으로 메일 의도를 긴급/문의/작업요청 등으로 분류합니다.</div>
+      </div>
+      <div class="card">
+        <div class="card-icon">📋</div>
+        <div class="card-title">Jira 티켓 생성</div>
+        <div class="card-desc">분류 결과에 따라 Jira 이슈(Bug/Task/Story)를 자동 또는 수동으로 생성합니다.</div>
+      </div>
+      <div class="card">
+        <div class="card-icon">📊</div>
+        <div class="card-title">대시보드 & 리포트</div>
+        <div class="card-desc">웹 대시보드에서 수신 현황 조회, 기간별 리포트, 차트를 확인할 수 있습니다.</div>
+      </div>
+    </div>
+
+    <h3>처리 흐름</h3>
+    <div class="flow">
+      <div class="flow-node hl">Outlook/Teams</div>
+      <span class="flow-arrow">→</span>
+      <div class="flow-node">Graph API / Webhook</div>
+      <span class="flow-arrow">→</span>
+      <div class="flow-node hl">규칙 분류기</div>
+      <span class="flow-arrow">→</span>
+      <div class="flow-node">LLM 분류기</div>
+      <span class="flow-arrow">→</span>
+      <div class="flow-node hl">Jira 티켓 생성</div>
+      <span class="flow-arrow">→</span>
+      <div class="flow-node">SQLite 저장</div>
+    </div>
+
+    <div class="callout callout-info">
+      <span class="callout-icon">ℹ️</span>
+      <div>대시보드 URL: <code>http://localhost:5000/dashboard</code> (서버 실행 후 브라우저에서 접속)</div>
+    </div>
+  </section>
+
+  <!-- ── 2. 설치 & 실행 ── -->
+  <section id="install">
+    <div class="section-badge badge-setup">설치</div>
+    <h2>설치 &amp; 실행</h2>
+
+    <h3>요구 사항</h3>
+    <ul style="color:var(--tx2);margin:0 0 16px 18px;font-size:13px;line-height:1.9">
+      <li>Python 3.11 이상</li>
+      <li>Windows 10/11 (pywin32 의존성)</li>
+      <li>Ollama 로컬 설치 및 모델 다운로드 (<code>llama3.2</code> 권장)</li>
+      <li>Jira 계정 및 API 토큰 (Jira 연동 사용 시)</li>
+      <li>Azure AD 앱 등록 (Microsoft Graph 인증용)</li>
+    </ul>
+
+    <h3>최초 설치 (1회만)</h3>
+    <div class="steps">
+      <div class="step">
+        <div class="step-num">1</div>
+        <div class="step-body">
+          <div class="step-title">프로젝트 폴더로 이동</div>
+          <pre><code>cd D:\inbound_gw_agent</code></pre>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num">2</div>
+        <div class="step-body">
+          <div class="step-title">가상환경 생성 &amp; 패키지 설치</div>
+          <pre><code>python -m venv .venv
+.venv\Scripts\pip install -r requirements.txt</code></pre>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num">3</div>
+        <div class="step-body">
+          <div class="step-title">.env 파일 생성</div>
+          <div class="step-desc">프로젝트 루트에 <code>.env</code> 파일을 만들고 아래 <a href="#env" style="color:var(--acc)">환경 변수 설정</a> 섹션을 참고해 값을 입력하세요.</div>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num">4</div>
+        <div class="step-body">
+          <div class="step-title">서버 실행</div>
+          <pre><code>.venv\Scripts\python.exe -m inbound_gw_agent</code></pre>
+        </div>
+      </div>
+    </div>
+
+    <h3>서버 재시작 (한 줄 명령어)</h3>
+    <pre><code>$p = (netstat -ano | Select-String ":5000\s.*LISTENING" | Select-Object -First 1).ToString().Trim() -split "\s+" | Select-Object -Last 1; if ($p) { Stop-Process -Id $p -Force }; Start-Sleep -Seconds 1; cd D:\inbound_gw_agent; .venv\Scripts\python.exe -m inbound_gw_agent</code></pre>
+
+    <div class="callout callout-warn">
+      <span class="callout-icon">⚠️</span>
+      <div><code>.env</code> 파일 수정 후에는 반드시 서버를 재시작해야 변경 내용이 적용됩니다.</div>
+    </div>
+  </section>
+
+  <!-- ── 3. Microsoft 인증 ── -->
+  <section id="auth">
+    <div class="section-badge badge-setup">인증</div>
+    <h2>Microsoft 인증 (최초 1회)</h2>
+    <p>서버를 처음 실행하면 터미널에 아래와 같은 메시지가 출력됩니다.</p>
+
+    <div class="screen-inner">
+      To sign in, use a web browser to open the page https://login.microsoft.com/device<br>
+      and enter the code <strong style="color:#f5a623">XXXXXXXX</strong> to authenticate.
+    </div>
+
+    <div class="steps" style="margin-top:16px">
+      <div class="step">
+        <div class="step-num">1</div>
+        <div class="step-body">
+          <div class="step-title">브라우저에서 장치 코드 페이지 접속</div>
+          <div class="step-desc"><code>https://login.microsoft.com/device</code> 접속</div>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num">2</div>
+        <div class="step-body">
+          <div class="step-title">터미널에 표시된 코드 입력</div>
+          <div class="step-desc">터미널에 출력된 8자리 코드를 입력 후 회사 계정으로 로그인합니다.</div>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num">3</div>
+        <div class="step-body">
+          <div class="step-title">인증 완료 확인</div>
+          <div class="step-desc">인증 성공 시 <code>.token_cache.bin</code> 파일이 생성되며 이후 자동 로그인됩니다.</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="callout callout-info">
+      <span class="callout-icon">ℹ️</span>
+      <div><code>.token_cache.bin</code>을 삭제하면 재인증이 필요합니다. Azure AD에 <code>AZURE_CLIENT_ID</code>가 올바르게 설정되어 있어야 합니다.</div>
+    </div>
+  </section>
+
+  <!-- ── 4. 환경 변수 ── -->
+  <section id="env">
+    <div class="section-badge badge-config">설정</div>
+    <h2>환경 변수 설정 (.env)</h2>
+    <p>프로젝트 루트의 <code>.env</code> 파일에 아래 값을 설정합니다. <span style="color:var(--c-crit)">●</span> 표시는 필수 항목입니다.</p>
+
+    <h3>서버</h3>
+    <table class="env-table">
+      <tr><th>변수명</th><th>설명</th><th>기본값 / 예시</th></tr>
+      <tr><td>WEBHOOK_PORT</td><td>서버 포트</td><td class="opt">5000</td></tr>
+      <tr><td>WEBHOOK_SECRET</td><td>웹훅 요청 검증 키 (선택)</td><td class="opt">my-secret-key</td></tr>
+    </table>
+
+    <h3>Microsoft Graph (메일 자동 수집)</h3>
+    <table class="env-table">
+      <tr><th>변수명</th><th>설명</th><th>기본값 / 예시</th></tr>
+      <tr><td>AZURE_CLIENT_ID</td><td>Azure AD 앱 클라이언트 ID</td><td class="req">● 필수</td></tr>
+      <tr><td>AZURE_TENANT_ID</td><td>Azure AD 테넌트 ID</td><td class="opt">common</td></tr>
+    </table>
+
+    <h3>Jira 연동</h3>
+    <table class="env-table">
+      <tr><th>변수명</th><th>설명</th><th>기본값 / 예시</th></tr>
+      <tr><td>JIRA_ENABLED</td><td>Jira 연동 활성화</td><td class="opt">true</td></tr>
+      <tr><td>JIRA_AUTO_CREATE</td><td>수신 즉시 자동 생성</td><td class="opt">false</td></tr>
+      <tr><td>JIRA_SERVER</td><td>Jira 서버 URL</td><td class="req">● https://your.atlassian.net</td></tr>
+      <tr><td>JIRA_EMAIL</td><td>Jira 로그인 이메일</td><td class="req">● user@company.com</td></tr>
+      <tr><td>JIRA_API_TOKEN</td><td>Jira API 토큰</td><td class="req">● Jira 계정 → 보안 → API 토큰</td></tr>
+      <tr><td>JIRA_PROJECT_KEY</td><td>Jira 프로젝트 키</td><td class="req">● GW</td></tr>
+      <tr><td>JIRA_ACCOUNT_ID</td><td>담당자·보고자 계정 ID<br><small style="color:var(--tx3)">Server: 로그인ID / Cloud: accountId</small></td><td class="opt">bae.heuju</td></tr>
+      <tr><td>JIRA_STORY_EPIC_KEY</td><td>스토리 연결 Epic 키</td><td class="opt">GW-5</td></tr>
+      <tr><td>JIRA_STORY_SPRINT_NAME</td><td>스프린트 이름</td><td class="opt">2026 디지털혁신본부 업무</td></tr>
+    </table>
+
+    <h3>개인 분류 설정</h3>
+    <table class="env-table">
+      <tr><th>변수명</th><th>설명</th><th>기본값 / 예시</th></tr>
+      <tr><td>USER_NAME</td><td>표시 이름 (본인 확인용)</td><td class="opt">홍길동</td></tr>
+      <tr><td>USER_EMAIL</td><td>본인 이메일</td><td class="opt">hong@mastern.co.kr</td></tr>
+      <tr><td>USER_KEYWORDS</td><td>관련 키워드 (쉼표 구분)</td><td class="opt">IT인프라,서버,보안,장애</td></tr>
+    </table>
+
+    <h3>LLM (Ollama)</h3>
+    <table class="env-table">
+      <tr><th>변수명</th><th>설명</th><th>기본값 / 예시</th></tr>
+      <tr><td>OLLAMA_BASE_URL</td><td>Ollama 서버 URL</td><td class="opt">http://localhost:11434</td></tr>
+      <tr><td>OLLAMA_MODEL</td><td>사용할 LLM 모델</td><td class="opt">llama3.2</td></tr>
+    </table>
+
+    <h3>.env 파일 예시</h3>
+    <pre><code># 서버
+WEBHOOK_PORT=5000
+
+# Microsoft Graph
+AZURE_CLIENT_ID=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
+AZURE_TENANT_ID=common
+
+# Jira
+JIRA_ENABLED=true
+JIRA_AUTO_CREATE=false
+JIRA_SERVER=https://yourcompany.atlassian.net
+JIRA_EMAIL=your@email.com
+JIRA_API_TOKEN=your_api_token_here
+JIRA_PROJECT_KEY=GW
+JIRA_ACCOUNT_ID=your.loginid
+
+# 개인 설정
+USER_NAME=홍길동
+USER_EMAIL=hong@mastern.co.kr
+USER_KEYWORDS=IT인프라,서버,보안,장애
+
+# LLM
+OLLAMA_MODEL=llama3.2</code></pre>
+  </section>
+
+  <!-- ── 5. 인바운드 현황 대시보드 ── -->
+  <section id="dashboard">
+    <div class="section-badge badge-use">사용법</div>
+    <h2>인바운드 현황 대시보드</h2>
+    <p><code>http://localhost:5000/dashboard</code>에서 수신된 메일 목록을 확인하고 관리합니다.</p>
+
+    <h3>날짜 필터</h3>
+    <div class="steps">
+      <div class="step">
+        <div class="step-num">1</div>
+        <div class="step-body">
+          <div class="step-title">기본값: 오늘</div>
+          <div class="step-desc">페이지 진입 시 오늘 날짜가 자동 선택되어 당일 수신 메일이 표시됩니다.</div>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num">2</div>
+        <div class="step-body">
+          <div class="step-title">빠른 필터 버튼</div>
+          <div class="step-desc">필터 행 우측의 <strong>오늘 / 이번 주 / 이번 달</strong> 버튼으로 빠르게 범위를 전환합니다.</div>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num">3</div>
+        <div class="step-body">
+          <div class="step-title">기간 직접 입력</div>
+          <div class="step-desc">날짜 입력 필드에서 시작일·종료일을 선택한 뒤 <strong>검색</strong> 버튼을 클릭합니다.</div>
+        </div>
+      </div>
+    </div>
+
+    <h3>메일 상세 패널</h3>
+    <p>목록에서 행을 클릭하면 오른쪽에 상세 패널이 열립니다. 상세 패널에서 가능한 작업:</p>
+    <div class="card-grid">
+      <div class="card">
+        <div class="card-icon">✏️</div>
+        <div class="card-title">분류 수정</div>
+        <div class="card-desc">분류(긴급/문의/작업요청 등), 중요도, 카테고리, 권장 액션을 직접 수정하고 저장할 수 있습니다.</div>
+      </div>
+      <div class="card">
+        <div class="card-icon">📋</div>
+        <div class="card-title">Jira 티켓 생성</div>
+        <div class="card-desc">Jira 연동 시 티켓 자동 생성, 비활성화 시 설명 텍스트 클립보드 복사.</div>
+      </div>
+      <div class="card">
+        <div class="card-icon">📝</div>
+        <div class="card-title">스토리 작성</div>
+        <div class="card-desc">AI가 팀명·공수·기한을 분석하여 Jira Story 이슈를 생성합니다.</div>
+      </div>
+      <div class="card">
+        <div class="card-icon">📄</div>
+        <div class="card-title">본문 확인</div>
+        <div class="card-desc">수신된 메일의 전문(본문)을 패널에서 바로 확인합니다.</div>
+      </div>
+    </div>
+
+    <h3>자동 갱신</h3>
+    <p>대시보드는 30초마다 자동으로 데이터를 갱신합니다 (날짜 필터 기준 유지).</p>
+  </section>
+
+  <!-- ── 6. 리포트 ── -->
+  <section id="report">
+    <div class="section-badge badge-use">리포트</div>
+    <h2>리포트</h2>
+    <p>좌측 메뉴의 <strong>리포트</strong>를 클릭하면 같은 화면에서 분석 리포트가 열립니다.</p>
+
+    <div class="card-grid">
+      <div class="card">
+        <div class="card-icon">🏠</div>
+        <div class="card-title">대시보드 탭</div>
+        <div class="card-desc">기간 요약 카드 4개(수신 메일·Jira 등록·처리율·기한 초과), 미처리 배너, 카테고리/시간대 차트.</div>
+      </div>
+      <div class="card">
+        <div class="card-icon">📧</div>
+        <div class="card-title">메일 수신 현황 탭</div>
+        <div class="card-desc">발신자별·카테고리별 차트, 수신 메일 목록 (클릭 시 본문 상세 보기).</div>
+      </div>
+      <div class="card">
+        <div class="card-icon">🎫</div>
+        <div class="card-title">Jira 티켓 현황 탭</div>
+        <div class="card-desc">평균 처리일, 팀별 티켓 수, 기한 초과 목록.</div>
+      </div>
+      <div class="card">
+        <div class="card-icon">📃</div>
+        <div class="card-title">처리 이력 탭</div>
+        <div class="card-desc">전체 처리 이력 테이블, CSV 엑셀 다운로드.</div>
+      </div>
+    </div>
+
+    <h3>날짜 필터 사용</h3>
+    <p>리포트 상단의 날짜 입력 + <strong>오늘 / 이번 주 / 이번 달</strong> 버튼으로 기간을 변경하면 모든 탭의 데이터가 해당 기간으로 갱신됩니다.</p>
+    <div class="callout callout-info">
+      <span class="callout-icon">ℹ️</span>
+      <div><strong>이번 주</strong>는 해당 주의 월요일~일요일 전체를 조회합니다.</div>
+    </div>
+  </section>
+
+  <!-- ── 7. Jira 연동 ── -->
+  <section id="jira">
+    <div class="section-badge badge-jira">Jira</div>
+    <h2>Jira 연동</h2>
+
+    <h3>티켓 생성 방식</h3>
+    <table class="env-table">
+      <tr><th>방식</th><th>설명</th><th>설정</th></tr>
+      <tr><td>자동 생성</td><td>메일 수신 즉시 Jira 이슈 생성</td><td><code>JIRA_AUTO_CREATE=true</code></td></tr>
+      <tr><td>수동 생성</td><td>대시보드에서 직접 "Jira 티켓 생성" 클릭</td><td><code>JIRA_AUTO_CREATE=false</code></td></tr>
+      <tr><td>스토리 생성</td><td>AI 분석 후 Story 이슈 생성</td><td>대시보드 상세 패널 → 스토리 작성</td></tr>
+    </table>
+
+    <h3>Jira API 토큰 발급 방법</h3>
+    <div class="steps">
+      <div class="step">
+        <div class="step-num">1</div>
+        <div class="step-body">
+          <div class="step-title">Jira 계정 설정 접속</div>
+          <div class="step-desc">Jira 오른쪽 상단 프로필 클릭 → <strong>계정 관리</strong> → <strong>보안</strong> 탭</div>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num">2</div>
+        <div class="step-body">
+          <div class="step-title">API 토큰 생성</div>
+          <div class="step-desc"><strong>API 토큰 생성 및 관리</strong> → <strong>API 토큰 만들기</strong> → 이름 입력 후 생성</div>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num">3</div>
+        <div class="step-body">
+          <div class="step-title">.env에 입력</div>
+          <div class="step-desc">생성된 토큰을 복사하여 <code>JIRA_API_TOKEN</code>에 붙여넣습니다. (토큰은 한 번만 표시됩니다)</div>
+        </div>
+      </div>
+    </div>
+
+    <h3>담당자·보고자 설정 (JIRA_ACCOUNT_ID)</h3>
+    <p>Jira 티켓 생성 시 담당자와 보고자를 자동으로 본인으로 설정하려면 아래 값을 <code>.env</code>에 추가합니다.</p>
+    <table class="env-table">
+      <tr><th>Jira 유형</th><th>입력값</th><th>확인 방법</th></tr>
+      <tr><td>Server / Data Center</td><td>Jira 로그인 아이디<br><code>bae.heuju</code></td><td>Jira 프로필 URL의 사용자명</td></tr>
+      <tr><td>Cloud (.atlassian.net)</td><td>accountId (36자리 UUID)</td><td><code>https://{도메인}.atlassian.net/rest/api/3/myself</code> 응답의 <code>accountId</code> 값</td></tr>
+    </table>
+  </section>
+
+  <!-- ── 8. 개인 설정 ── -->
+  <section id="settings">
+    <div class="section-badge badge-config">설정</div>
+    <h2>개인 설정 (대시보드 내)</h2>
+    <p>대시보드 우측 상단의 ⚙ 버튼으로 설정 모달을 열어 서버 재시작 없이 일부 값을 변경할 수 있습니다.</p>
+
+    <table class="env-table">
+      <tr><th>설정 항목</th><th>설명</th></tr>
+      <tr><td>이름 / 이메일</td><td>본인 확인 및 분류에 사용 (USER_NAME, USER_EMAIL)</td></tr>
+      <tr><td>관련 키워드</td><td>본인 관련 메일 분류 키워드 (쉼표 구분)</td></tr>
+      <tr><td>Jira 활성화 / 자동 생성</td><td>Jira 연동 on/off, 자동 생성 여부</td></tr>
+      <tr><td>Jira 서버 / 프로젝트</td><td>서버 URL, 이메일, API 토큰, 프로젝트 키</td></tr>
+      <tr><td>Jira 계정 ID</td><td>담당자·보고자용 계정 ID (JIRA_ACCOUNT_ID)</td></tr>
+      <tr><td>Epic Key / 스프린트</td><td>스토리 생성 시 연결할 Epic 및 스프린트</td></tr>
+    </table>
+
+    <div class="callout callout-success">
+      <span class="callout-icon">✅</span>
+      <div>설정 저장 시 <code>.env</code> 파일이 자동으로 업데이트됩니다. 일부 설정(Jira 연결 정보 등)은 서버 재시작 후 완전히 반영됩니다.</div>
+    </div>
+  </section>
+
+  <!-- ── 9. Webhook ── -->
+  <section id="webhook">
+    <div class="section-badge badge-setup">연동</div>
+    <h2>Webhook (Power Automate)</h2>
+    <p>Power Automate를 이용해 Outlook/Teams 메시지를 실시간으로 전달할 수 있습니다.</p>
+
+    <h3>엔드포인트</h3>
+    <pre><code>POST http://localhost:5000/webhook/message
+Content-Type: application/json
+
+{
+  "source": "outlook",
+  "sender": "user@company.com",
+  "subject": "메일 제목",
+  "body": "메일 본문",
+  "received_at": "2026-05-18T10:00:00Z"
+}</code></pre>
+
+    <h3>Outlook 플로우 설정</h3>
+    <div class="steps">
+      <div class="step">
+        <div class="step-num">1</div>
+        <div class="step-body">
+          <div class="step-title">트리거: 새 이메일이 도착하면 (V3)</div>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num">2</div>
+        <div class="step-body">
+          <div class="step-title">HTTP 액션 추가</div>
+          <div class="step-desc">메서드: <code>POST</code> / URI: ngrok URL + <code>/webhook/message</code></div>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num">3</div>
+        <div class="step-body">
+          <div class="step-title">본문 설정</div>
+          <pre><code>{
+  "source": "outlook",
+  "sender": "@{triggerBody()?['from']?['emailAddress']?['address']}",
+  "subject": "@{triggerBody()?['subject']}",
+  "body": "@{triggerBody()?['body']?['content']}",
+  "received_at": "@{triggerBody()?['receivedDateTime']}"
+}</code></pre>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── 10. ngrok ── -->
+  <section id="ngrok">
+    <div class="section-badge badge-setup">연동</div>
+    <h2>ngrok 외부 노출</h2>
+    <p>Power Automate가 로컬 서버에 접근할 수 있도록 ngrok으로 외부 URL을 발급합니다.</p>
+
+    <div class="steps">
+      <div class="step">
+        <div class="step-num">1</div>
+        <div class="step-body">
+          <div class="step-title">ngrok 설치</div>
+          <pre><code>winget install ngrok.ngrok</code></pre>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num">2</div>
+        <div class="step-body">
+          <div class="step-title">별도 터미널에서 실행</div>
+          <pre><code>ngrok http 5000</code></pre>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num">3</div>
+        <div class="step-body">
+          <div class="step-title">발급된 URL 사용</div>
+          <div class="step-desc"><code>https://xxxx.ngrok-free.app</code> 형태의 URL을 Power Automate HTTP 액션 URI에 입력합니다.</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="callout callout-warn">
+      <span class="callout-icon">⚠️</span>
+      <div>ngrok은 서버가 실행 중일 때만 동작합니다. 컴퓨터 재시작 시 URL이 변경되므로 Power Automate 설정도 함께 업데이트해야 합니다.</div>
+    </div>
+  </section>
+
+  <!-- ── 11. 분류 기준 ── -->
+  <section id="classification">
+    <div class="section-badge badge-use">참고</div>
+    <h2>메일 분류 기준</h2>
+    <p>수신된 메일은 규칙 기반 → LLM 순으로 아래 카테고리로 분류됩니다.</p>
+
+    <div class="badge-table">
+      <span class="sv sv-crit"><span class="sv-dot"></span>긴급 (urgent)</span>
+      <span class="sv sv-high"><span class="sv-dot"></span>작업요청 (task)</span>
+      <span class="sv sv-med"><span class="sv-dot"></span>문의 (inquiry)</span>
+      <span class="sv sv-med"><span class="sv-dot"></span>프로젝트 (project)</span>
+      <span class="sv sv-info"><span class="sv-dot"></span>공지 (info)</span>
+      <span class="sv sv-spam"><span class="sv-dot"></span>스팸 (spam)</span>
+      <span class="sv sv-unk"><span class="sv-dot"></span>미분류 (unknown)</span>
+    </div>
+
+    <table class="env-table">
+      <tr><th>분류</th><th>Jira 이슈 유형</th><th>우선순위</th></tr>
+      <tr><td>긴급 (urgent)</td><td>Bug</td><td>Highest</td></tr>
+      <tr><td>작업요청 (task)</td><td>Task</td><td>High</td></tr>
+      <tr><td>문의 (inquiry)</td><td>Task</td><td>Medium</td></tr>
+      <tr><td>프로젝트 (project)</td><td>Task</td><td>High</td></tr>
+    </table>
+
+    <div class="callout callout-info">
+      <span class="callout-icon">ℹ️</span>
+      <div>분류 결과는 대시보드 상세 패널의 <strong>분류 수정</strong> 섹션에서 수동으로 변경할 수 있습니다.</div>
+    </div>
+  </section>
+
+  <!-- ── 12. FAQ ── -->
+  <section id="faq">
+    <div class="section-badge badge-faq">FAQ</div>
+    <h2>자주 묻는 질문</h2>
+
+    <h3>❓ 서버가 시작되지 않습니다</h3>
+    <p>포트 5000이 이미 사용 중인지 확인하세요. PowerShell에서 다음 명령으로 확인할 수 있습니다:</p>
+    <pre><code>netstat -ano | Select-String ":5000"</code></pre>
+
+    <h3>❓ 메일이 수집되지 않습니다</h3>
+    <ul style="color:var(--tx2);margin:0 0 16px 18px;font-size:13px;line-height:1.9">
+      <li><code>AZURE_CLIENT_ID</code>가 올바르게 설정되었는지 확인</li>
+      <li><code>.token_cache.bin</code>이 존재하는지 확인 (없으면 재인증 필요)</li>
+      <li>Microsoft 계정 인증이 만료된 경우 <code>.token_cache.bin</code> 삭제 후 재실행</li>
+    </ul>
+
+    <h3>❓ Jira 티켓이 생성되지 않습니다</h3>
+    <ul style="color:var(--tx2);margin:0 0 16px 18px;font-size:13px;line-height:1.9">
+      <li><code>JIRA_ENABLED=true</code> 설정 확인</li>
+      <li><code>JIRA_API_TOKEN</code>이 유효한지 확인 (만료 시 재발급)</li>
+      <li><code>JIRA_PROJECT_KEY</code>가 실제 프로젝트 키와 일치하는지 확인</li>
+      <li>대시보드 ⚙ 설정 → Jira 연결 정보 다시 저장 후 서버 재시작</li>
+    </ul>
+
+    <h3>❓ 담당자가 다른 사람으로 설정됩니다</h3>
+    <p>
+      <code>JIRA_ACCOUNT_ID</code>에 올바른 값을 설정해야 합니다.<br>
+      Jira Cloud: <code>https://yourdomain.atlassian.net/rest/api/3/myself</code>에 접속해 <code>accountId</code> 값 복사<br>
+      Jira Server: 본인의 Jira 로그인 ID 입력
+    </p>
+
+    <h3>❓ Ollama 모델을 변경하고 싶습니다</h3>
+    <pre><code># Ollama 모델 다운로드
+ollama pull gemma3
+
+# .env 수정
+OLLAMA_MODEL=gemma3</code></pre>
+    <p>.env 수정 후 서버를 재시작하세요.</p>
+
+    <h3>❓ 중복 메일이 수집됩니다</h3>
+    <p>각 메일은 메시지 ID 기반으로 중복 처리됩니다. 동일 메일이 반복 수집되는 경우 <code>state.db</code> 파일의 처리 이력을 확인하세요.</p>
+
+    <div class="callout callout-warn" style="margin-top:24px">
+      <span class="callout-icon">⚠️</span>
+      <div>문제가 지속될 경우 터미널의 로그 출력을 확인하세요. 에러 내용을 함께 첨부하면 빠르게 해결할 수 있습니다.</div>
+    </div>
+  </section>
+
+</main>
+</div>
+
+<script>
+  // active nav highlighting on scroll
+  const sections = document.querySelectorAll("section[id]");
+  const navLinks = document.querySelectorAll(".nav-item");
+  const observer = new IntersectionObserver(entries => {
+    entries.forEach(e => {
+      if(e.isIntersecting){
+        navLinks.forEach(l => l.classList.remove("active"));
+        const link = document.querySelector(`.nav-item[href="#${e.target.id}"]`);
+        if(link) link.classList.add("active");
+      }
+    });
+  }, { threshold: 0.3 });
+  sections.forEach(s => observer.observe(s));
+</script>
+</body>
+</html>

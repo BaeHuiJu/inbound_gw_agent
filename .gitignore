@@ -17,3 +17,7 @@ build/
 
 .bkit
 .bkit/
+
+.token_cache.bin
+state.db
+.claude/
