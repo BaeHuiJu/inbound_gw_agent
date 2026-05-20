@@ -3074,8 +3074,12 @@ def create_app(pipeline: "Pipeline") -> FastAPI:
         x_webhook_secret: str | None = Header(default=None),
     ):
         # 시크릿 검증 (WEBHOOK_SECRET 설정 시 활성화)
+        # hmac.compare_digest: 타이밍 공격 방어 — 문자열 길이에 무관하게 일정한 시간 비교
         if settings.webhook_secret:
-            if x_webhook_secret != settings.webhook_secret:
+            if x_webhook_secret is None or not hmac.compare_digest(
+                x_webhook_secret.encode(),
+                settings.webhook_secret.encode(),
+            ):
                 raise HTTPException(status_code=403, detail="Invalid secret")
 
         try:
