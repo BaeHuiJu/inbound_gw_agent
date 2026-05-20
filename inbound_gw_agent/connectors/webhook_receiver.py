@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64 as _base64
 import csv as _csv
 import hashlib
 import hmac
@@ -2597,6 +2598,33 @@ loadHome();
 def create_app(pipeline: "Pipeline") -> FastAPI:
     app = FastAPI(title="Inbound GW Agent", docs_url=None, redoc_url=None)
     settings = get_settings()
+
+    @app.middleware("http")
+    async def _dashboard_auth_middleware(request: Request, call_next):
+        """대시보드·리포트 접근 시 HTTP Basic Auth 검증 (DASHBOARD_SECRET 설정 시 활성화)."""
+        path = request.url.path
+        if settings.dashboard_secret and (
+            path.startswith("/dashboard") or path.startswith("/report")
+        ):
+            auth = request.headers.get("Authorization", "")
+            if auth.startswith("Basic "):
+                try:
+                    decoded = _base64.b64decode(auth[6:]).decode("utf-8")
+                    password = decoded.split(":", 1)[1] if ":" in decoded else ""
+                    if hmac.compare_digest(
+                        password.encode("utf-8"),
+                        settings.dashboard_secret.encode("utf-8"),
+                    ):
+                        return await call_next(request)
+                except Exception:
+                    pass
+            from fastapi.responses import Response as _Resp
+            return _Resp(
+                content="Unauthorized",
+                status_code=401,
+                headers={"WWW-Authenticate": 'Basic realm="Dashboard"'},
+            )
+        return await call_next(request)
 
     @app.get("/")
     async def root():
