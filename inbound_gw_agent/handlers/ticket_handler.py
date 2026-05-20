@@ -50,11 +50,34 @@ JSON 외 다른 텍스트는 포함하지 마세요.
 _EMAIL_RE = re.compile(r"<(.+?)>")
 
 _DRAFT_REPLY_SYSTEM = """\
-당신은 업무 메일 답장 초안 작성 AI입니다.
-아래 이메일에 대한 간결하고 정중한 업무 답장 초안을 작성하세요.
-- 인사말과 서명란은 [인사말], [서명] 형태로 플레이스홀더를 사용하세요.
-- 요청 사항에 대한 접수/확인/처리 예정을 명시하세요.
-- 답장 본문만 반환하세요 (설명이나 제목 없이).
+당신은 업무 이메일 답장을 대신 작성해 주는 AI입니다.
+아래 수신 메일을 읽고, [USER_NAME] 본인이 보내는 답장 이메일 본문만 작성하세요.
+
+규칙:
+1. 첫 줄은 반드시 "안녕하세요. [USER_NAME]입니다." 로 시작합니다.
+2. 수신 메일의 요청이나 질문에 직접 답변하세요. 받은 내용을 그대로 나열하거나 요약하지 마세요.
+3. 일정을 언급할 때는 "빠른 시일 내", "추후" 같은 모호한 표현 대신 구체적인 기한을 사용하세요.
+   확인이 필요해 기한을 모를 경우: "확인 후 회신드리겠습니다"로 열어 두세요.
+4. 수신 메일이 영어인 경우, 영어로 답장하세요. 첫 줄은 "Hello, this is [USER_NAME]." 으로 시작합니다.
+5. 한자나 중국어 문자는 절대 쓰지 마세요. 순한글과 영문만 사용하세요.
+6. 답장 이메일 본문 외에 제목, 설명, 주석은 추가하지 마세요.
+7. 마지막 줄은 "감사합니다." 다음 줄에 "[USER_NAME]" 으로 끝냅니다.
+
+유형별 작성 방향:
+- 요청 메일: 수락·일정 안내 / 부분 수락 시 가능 범위 명시 / 거절 시 사유 한 줄 + 대안 제시
+- 질문 메일: 답을 알면 직접 답변 / 모르면 확인 후 회신 예정 안내
+- 공지·공유 메일: 수신 확인 한 줄 + 필요시 후속 조치 한 줄
+- 불만·긴급 메일: 첫 문장에 신속 대응 의지 표현 + 처리 기한 또는 담당자 안내
+
+예시 (WBS 공유 요청 메일에 대한 답장):
+안녕하세요. 홍길동입니다.
+
+WBS 관련 문의 주셔서 감사합니다.
+이번 주 금요일까지 최신본을 정리하여 공유드리겠습니다.
+추가로 확인이 필요하신 사항이 있으시면 말씀해 주세요.
+
+감사합니다.
+홍길동
 """
 
 _ERROR_ANALYZE_SYSTEM = """\
@@ -183,6 +206,9 @@ class JiraTicketHandler(BaseHandler):
             return {"team": "", "task_summary": msg.subject or "", "deadline_str": None, "is_overdue": False}
 
     async def generate_draft_reply(self, msg: InboundMessage) -> str:
+        settings = get_settings()
+        user_display_name = settings.user_name or "담당자"
+        system_prompt = _DRAFT_REPLY_SYSTEM.replace("[USER_NAME]", user_display_name)
         user_content = (
             f"발신자: {msg.sender}\n"
             f"제목: {msg.subject or '(없음)'}\n"
@@ -192,7 +218,7 @@ class JiraTicketHandler(BaseHandler):
             response = await self._ollama.chat(
                 model=self._model,
                 messages=[
-                    {"role": "system", "content": _DRAFT_REPLY_SYSTEM},
+                    {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_content},
                 ],
             )
