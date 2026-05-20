@@ -49,6 +49,14 @@ JSON 외 다른 텍스트는 포함하지 마세요.
 
 _EMAIL_RE = re.compile(r"<(.+?)>")
 
+_DRAFT_REPLY_SYSTEM = """\
+당신은 업무 메일 답장 초안 작성 AI입니다.
+아래 이메일에 대한 간결하고 정중한 업무 답장 초안을 작성하세요.
+- 인사말과 서명란은 [인사말], [서명] 형태로 플레이스홀더를 사용하세요.
+- 요청 사항에 대한 접수/확인/처리 예정을 명시하세요.
+- 답장 본문만 반환하세요 (설명이나 제목 없이).
+"""
+
 _ERROR_ANALYZE_SYSTEM = """\
 You are an IT error analysis expert. Analyze the email below and respond ONLY with valid JSON.
 Do NOT include any explanation, markdown, or text outside the JSON object.
@@ -173,6 +181,25 @@ class JiraTicketHandler(BaseHandler):
         except Exception as exc:
             log.warning("story_analyze_failed", error=str(exc)[:120])
             return {"team": "", "task_summary": msg.subject or "", "deadline_str": None, "is_overdue": False}
+
+    async def generate_draft_reply(self, msg: InboundMessage) -> str:
+        user_content = (
+            f"발신자: {msg.sender}\n"
+            f"제목: {msg.subject or '(없음)'}\n"
+            f"본문:\n{msg.body[:2000]}"
+        )
+        try:
+            response = await self._ollama.chat(
+                model=self._model,
+                messages=[
+                    {"role": "system", "content": _DRAFT_REPLY_SYSTEM},
+                    {"role": "user", "content": user_content},
+                ],
+            )
+            return response.message.content.strip()
+        except Exception as exc:
+            log.warning("draft_reply_failed", error=str(exc)[:120])
+            return ""
 
     async def analyze_error(self, msg: InboundMessage) -> dict:
         """오류 알림 메일에서 시스템·원인·조치 방법을 추출한다. 실패 시 빈값 dict 반환."""

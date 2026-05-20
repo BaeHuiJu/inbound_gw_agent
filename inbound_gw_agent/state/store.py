@@ -46,7 +46,7 @@ class StateStore:
             "sender", "subject", "received_at",
             "mine", "personal_priority", "action_required",
             "email_category", "suggested_action",
-            "body",
+            "body", "summary", "draft_reply",
         )
         existing = self._existing_columns("processed_messages")
         for col in new_cols:
@@ -175,7 +175,8 @@ class StateStore:
             row = self._conn.execute(
                 """SELECT id, source, sender, subject, intent_type, jira_key,
                           received_at, processed_at,
-                          mine, personal_priority, action_required, email_category, suggested_action, body
+                          mine, personal_priority, action_required, email_category, suggested_action, body,
+                          summary, draft_reply
                    FROM processed_messages WHERE id = ?""",
                 (message_id,),
             ).fetchone()
@@ -185,11 +186,26 @@ class StateStore:
             "id", "source", "sender", "subject", "intent_type", "jira_key",
             "received_at", "processed_at",
             "mine", "personal_priority", "action_required", "email_category", "suggested_action", "body",
+            "summary", "draft_reply",
         )
         d = dict(zip(keys, row))
         d["mine"] = d["mine"] == "1" if d["mine"] is not None else None
         d["action_required"] = d["action_required"] == "1" if d["action_required"] is not None else None
         return d
+
+    def update_summary(self, message_id: str, summary: str) -> None:
+        self._conn.execute(
+            "UPDATE processed_messages SET summary = ? WHERE id = ?",
+            (summary, message_id),
+        )
+        self._conn.commit()
+
+    def update_draft_reply(self, message_id: str, draft_reply: str) -> None:
+        self._conn.execute(
+            "UPDATE processed_messages SET draft_reply = ? WHERE id = ?",
+            (draft_reply, message_id),
+        )
+        self._conn.commit()
 
     def update_jira_key(self, message_id: str, jira_key: str) -> None:
         with self._lock:

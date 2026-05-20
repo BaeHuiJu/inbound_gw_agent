@@ -311,6 +311,21 @@ tbody td{padding:11px 14px;font-size:12px;color:var(--tx2)}
 #cfg-save{background:var(--acc);color:#fff;border:none;border-radius:7px;padding:8px 18px;font-size:12.5px;font-weight:700;cursor:pointer;white-space:nowrap;flex-shrink:0}
 #cfg-save:disabled{opacity:.5;cursor:default}
 
+/* ── SUMMARY / DRAFT ── */
+.btn-summary{padding:7px 16px;background:linear-gradient(135deg,#0ea5e9,#1a4fff);border:none;border-radius:7px;color:#fff;font-size:12px;font-weight:700;cursor:pointer;transition:opacity .12s;display:inline-flex;align-items:center;gap:6px}
+.btn-summary:hover{opacity:.85}
+.btn-summary:disabled{opacity:.5;cursor:not-allowed}
+.btn-draft{padding:7px 16px;background:linear-gradient(135deg,#2eca8a,#0ea5e9);border:none;border-radius:7px;color:#fff;font-size:12px;font-weight:700;cursor:pointer;transition:opacity .12s;display:inline-flex;align-items:center;gap:6px}
+.btn-draft:hover{opacity:.85}
+.btn-draft:disabled{opacity:.5;cursor:not-allowed}
+.dp-summary-text{margin-top:10px;font-size:12px;color:var(--tx);line-height:1.7;white-space:pre-wrap;word-break:break-word;background:var(--bg-e);border:1px solid var(--bd);border-radius:8px;padding:10px 12px}
+.dp-draft-area{margin-top:10px;width:100%;min-height:130px;background:var(--bg-e);border:1px solid var(--bd);border-radius:8px;padding:10px 12px;color:var(--tx);font-size:12px;line-height:1.7;font-family:inherit;resize:vertical;outline:none;box-sizing:border-box}
+.dp-draft-area:focus{border-color:var(--bd-acc)}
+.btn-copy-draft{margin-top:7px;padding:5px 13px;background:transparent;border:1px solid var(--bd2);border-radius:6px;color:var(--tx2);font-size:11px;font-weight:600;cursor:pointer;transition:all .12s}
+.btn-copy-draft:hover{background:var(--bg-hov);color:var(--tx)}
+.dp-regen{padding:5px 10px;background:transparent;border:1px solid var(--bd2);border-radius:6px;color:var(--tx3);font-size:11px;font-weight:600;cursor:pointer;transition:all .12s}
+.dp-regen:hover{color:var(--tx2);border-color:var(--bd-acc)}
+
 /* ── STORY BUTTON ── */
 .btn-story{padding:7px 14px;background:transparent;color:var(--c-fix);border:1px solid rgba(168,85,247,.35);border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;transition:all .15s;margin-top:7px}
 .btn-story:hover{background:rgba(168,85,247,.1)}
@@ -921,6 +936,21 @@ tbody td{padding:11px 14px;font-size:12px;color:var(--tx2)}
       <button class="btn-analyze" id="btn-analyze" onclick="runErrorAnalysis()">&#128269; AI 오류 분석</button>
       <div class="ea-result" id="ea-result" style="display:none"></div>
     </div>
+    <div id="dp-summary-sec">
+      <div class="dp-sec-lbl">메일 요약</div>
+      <button class="btn-summary" id="btn-summary" onclick="generateSummary(false)">&#9889; 요약 생성</button>
+      <button class="dp-regen" id="btn-summary-regen" onclick="generateSummary(true)" style="display:none">&#8635; 재생성</button>
+      <div class="dp-summary-text" id="dp-summary-text" style="display:none"></div>
+    </div>
+    <div id="dp-draft-sec">
+      <div class="dp-sec-lbl">답장 초안</div>
+      <button class="btn-draft" id="btn-draft" onclick="generateDraftReply(false)">&#9997; 초안 생성</button>
+      <button class="dp-regen" id="btn-draft-regen" onclick="generateDraftReply(true)" style="display:none">&#8635; 재생성</button>
+      <div id="dp-draft-wrap" style="display:none">
+        <textarea class="dp-draft-area" id="dp-draft-area" spellcheck="false"></textarea>
+        <button class="btn-copy-draft" onclick="copyDraft()">&#128203; 클립보드 복사</button>
+      </div>
+    </div>
     <div>
       <div class="dp-sec-lbl">자동 수정 파이프라인</div>
       <div class="af-card">
@@ -1240,12 +1270,42 @@ function openDetail(id){
   } else {
     badge.textContent="분류 완료"; badge.className="af-badge done";
   }
+  // 요약 섹션 초기화
+  document.getElementById("dp-summary-text").style.display = "none";
+  document.getElementById("dp-summary-text").textContent = "";
+  document.getElementById("btn-summary-regen").style.display = "none";
+  const btnSum = document.getElementById("btn-summary");
+  btnSum.disabled = false;
+  btnSum.innerHTML = "&#9889; 요약 생성";
+  // 답장 초안 섹션 초기화
+  document.getElementById("dp-draft-wrap").style.display = "none";
+  document.getElementById("dp-draft-area").value = "";
+  document.getElementById("btn-draft-regen").style.display = "none";
+  const btnDraft = document.getElementById("btn-draft");
+  btnDraft.disabled = false;
+  btnDraft.innerHTML = "&#9997; 초안 생성";
+  btnSum.style.display = "";
+  btnDraft.style.display = "";
   // 본문 비동기 로딩
   const bodyEl = document.getElementById("dp-body-content");
   bodyEl.textContent = "불러오는 중...";
   fetch("/dashboard/message/"+encodeURIComponent(id))
     .then(r=>r.json())
-    .then(d=>{ bodyEl.textContent = cleanBody(d.body); })
+    .then(d=>{
+      bodyEl.textContent = cleanBody(d.body);
+      if(d.summary){
+        document.getElementById("dp-summary-text").textContent = d.summary;
+        document.getElementById("dp-summary-text").style.display = "";
+        document.getElementById("btn-summary-regen").style.display = "";
+        btnSum.style.display = "none";
+      }
+      if(d.draft_reply){
+        document.getElementById("dp-draft-area").value = d.draft_reply;
+        document.getElementById("dp-draft-wrap").style.display = "";
+        document.getElementById("btn-draft-regen").style.display = "";
+        btnDraft.style.display = "none";
+      }
+    })
     .catch(()=>{ bodyEl.textContent = "(본문을 불러올 수 없습니다)"; });
 
   document.getElementById("dp-edit-intent").value = m.intent_type || "unknown";
@@ -1443,6 +1503,80 @@ async function createJiraManually(){
     btn.disabled=false;
     btn.textContent="&#127931; Jira 티켓 생성";
   }
+}
+
+async function generateSummary(regenerate){
+  if(!_selId) return;
+  const btn = document.getElementById("btn-summary");
+  const regenBtn = document.getElementById("btn-summary-regen");
+  const textEl = document.getElementById("dp-summary-text");
+  btn.disabled = true;
+  regenBtn.disabled = true;
+  const origText = regenerate ? regenBtn.innerHTML : btn.innerHTML;
+  if(regenerate) regenBtn.innerHTML = "&#9203; 생성 중...";
+  else btn.innerHTML = "&#9203; 생성 중...";
+  try{
+    const url = "/dashboard/message/"+encodeURIComponent(_selId)+"/summarize"+(regenerate?"?regenerate=true":"");
+    const r = await fetch(url);
+    if(!r.ok) throw new Error(await r.text());
+    const d = await r.json();
+    textEl.textContent = d.summary || "(요약 없음)";
+    textEl.style.display = "";
+    btn.style.display = "none";
+    regenBtn.style.display = "";
+  }catch(e){
+    textEl.textContent = "요약 생성 실패: "+e.message;
+    textEl.style.display = "";
+  }finally{
+    btn.disabled = false;
+    regenBtn.disabled = false;
+    if(regenerate) regenBtn.innerHTML = origText;
+    else btn.innerHTML = origText;
+  }
+}
+
+async function generateDraftReply(regenerate){
+  if(!_selId) return;
+  const btn = document.getElementById("btn-draft");
+  const regenBtn = document.getElementById("btn-draft-regen");
+  const wrap = document.getElementById("dp-draft-wrap");
+  const area = document.getElementById("dp-draft-area");
+  btn.disabled = true;
+  regenBtn.disabled = true;
+  const origText = regenerate ? regenBtn.innerHTML : btn.innerHTML;
+  if(regenerate) regenBtn.innerHTML = "&#9203; 생성 중...";
+  else btn.innerHTML = "&#9203; 생성 중...";
+  try{
+    const url = "/dashboard/message/"+encodeURIComponent(_selId)+"/draft-reply"+(regenerate?"?regenerate=true":"");
+    const r = await fetch(url, {method:"POST"});
+    if(!r.ok) throw new Error(await r.text());
+    const d = await r.json();
+    area.value = d.draft || "";
+    wrap.style.display = "";
+    btn.style.display = "none";
+    regenBtn.style.display = "";
+  }catch(e){
+    area.value = "초안 생성 실패: "+e.message;
+    wrap.style.display = "";
+  }finally{
+    btn.disabled = false;
+    regenBtn.disabled = false;
+    if(regenerate) regenBtn.innerHTML = origText;
+    else btn.innerHTML = origText;
+  }
+}
+
+function copyDraft(){
+  const area = document.getElementById("dp-draft-area");
+  navigator.clipboard.writeText(area.value).then(()=>{
+    const btn = document.querySelector(".btn-copy-draft");
+    const orig = btn.textContent;
+    btn.textContent = "✓ 복사됨";
+    setTimeout(()=>{ btn.textContent = orig; }, 1500);
+  }).catch(()=>{
+    area.select();
+    document.execCommand("copy");
+  });
 }
 
 document.getElementById("srch").addEventListener("input", renderTable);
@@ -1668,8 +1802,8 @@ async function openStoryModal(){
     document.getElementById("st-task").value = d.task_summary || "";
     // LLM이 추출한 기한을 날짜 입력에 자동 채움 (예: "2026.06.30" → "2026-06-30")
     if(d.deadline_str){
-      const ds = d.deadline_str.replace(/\./g,"-");
-      if(/^\d{4}-\d{2}-\d{2}$/.test(ds)) document.getElementById("st-due-date").value=ds;
+      const ds = d.deadline_str.replace(/[.]/g,"-");
+      if(/^[0-9]{4}-[0-9]{2}-[0-9]{2}$/.test(ds)) document.getElementById("st-due-date").value=ds;
     }
     document.getElementById("btn-st-next").disabled=false;
   }catch(e){
@@ -2814,7 +2948,71 @@ def create_app(pipeline: "Pipeline") -> FastAPI:
         row = pipeline._store.get_message_by_id(message_id)
         if not row:
             raise HTTPException(status_code=404, detail="메시지를 찾을 수 없습니다.")
-        return {"body": row.get("body") or ""}
+        return {
+            "body": row.get("body") or "",
+            "summary": row.get("summary") or "",
+            "draft_reply": row.get("draft_reply") or "",
+        }
+
+    @app.get("/dashboard/message/{message_id}/summarize")
+    async def summarize_message(message_id: str, regenerate: bool = False):
+        import ollama as _ollama
+        from inbound_gw_agent.handlers.ticket_handler import _SUMMARIZE_SYSTEM
+        row = pipeline._store.get_message_by_id(message_id)
+        if not row:
+            raise HTTPException(status_code=404, detail="메시지를 찾을 수 없습니다.")
+        if row.get("summary") and not regenerate:
+            return {"summary": row["summary"]}
+        msg = _row_to_msg(row)
+        user_content = (
+            f"발신자: {msg.sender}\n"
+            f"제목: {msg.subject or '(없음)'}\n"
+            f"본문:\n{msg.body[:2000]}"
+        )
+        try:
+            ollama_client = _ollama.AsyncClient(host=settings.ollama_base_url)
+            response = await ollama_client.chat(
+                model=settings.ollama_model,
+                messages=[
+                    {"role": "system", "content": _SUMMARIZE_SYSTEM},
+                    {"role": "user", "content": user_content},
+                ],
+            )
+            summary = response.message.content.strip()
+        except Exception as exc:
+            raise HTTPException(status_code=502, detail=f"LLM 오류: {exc}") from exc
+        pipeline._store.update_summary(message_id, summary)
+        return {"summary": summary}
+
+    @app.post("/dashboard/message/{message_id}/draft-reply")
+    async def draft_reply_message(message_id: str, regenerate: bool = False):
+        import ollama as _ollama
+        from inbound_gw_agent.handlers.ticket_handler import _DRAFT_REPLY_SYSTEM
+        row = pipeline._store.get_message_by_id(message_id)
+        if not row:
+            raise HTTPException(status_code=404, detail="메시지를 찾을 수 없습니다.")
+        if row.get("draft_reply") and not regenerate:
+            return {"draft": row["draft_reply"]}
+        msg = _row_to_msg(row)
+        user_content = (
+            f"발신자: {msg.sender}\n"
+            f"제목: {msg.subject or '(없음)'}\n"
+            f"본문:\n{msg.body[:2000]}"
+        )
+        try:
+            ollama_client = _ollama.AsyncClient(host=settings.ollama_base_url)
+            response = await ollama_client.chat(
+                model=settings.ollama_model,
+                messages=[
+                    {"role": "system", "content": _DRAFT_REPLY_SYSTEM},
+                    {"role": "user", "content": user_content},
+                ],
+            )
+            draft = response.message.content.strip()
+        except Exception as exc:
+            raise HTTPException(status_code=502, detail=f"LLM 오류: {exc}") from exc
+        pipeline._store.update_draft_reply(message_id, draft)
+        return {"draft": draft}
 
     @app.patch("/dashboard/message/{message_id}")
     async def patch_message_meta(message_id: str, payload: MessageMetaPatch):
