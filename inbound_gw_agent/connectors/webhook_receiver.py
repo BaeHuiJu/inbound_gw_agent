@@ -3000,11 +3000,13 @@ def create_app(pipeline: "Pipeline") -> FastAPI:
             f"본문:\n{msg.body[:2000]}"
         )
         try:
+            user_display_name = settings.user_name or "담당자"
+            system_prompt = _DRAFT_REPLY_SYSTEM.replace("[USER_NAME]", user_display_name)
             ollama_client = _ollama.AsyncClient(host=settings.ollama_base_url)
             response = await ollama_client.chat(
                 model=settings.ollama_model,
                 messages=[
-                    {"role": "system", "content": _DRAFT_REPLY_SYSTEM},
+                    {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_content},
                 ],
             )
