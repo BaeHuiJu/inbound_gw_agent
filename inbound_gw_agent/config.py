@@ -6,7 +6,8 @@ class Settings(BaseSettings):
     # Webhook 서버
     webhook_host: str = "0.0.0.0"
     webhook_port: int = 8000
-    webhook_secret: str = ""  # Power Automate 요청 검증용 (선택)
+    webhook_secret: str = ""           # Power Automate 요청 검증용 (선택)
+    dashboard_secret: str = ""         # 대시보드/리포트 HTTP Basic Auth 비밀번호 (선택, 설정 시 인증 활성화)
 
     # Jira
     jira_enabled: bool = True       # Jira 연결 활성화 (수동 생성 가능)
