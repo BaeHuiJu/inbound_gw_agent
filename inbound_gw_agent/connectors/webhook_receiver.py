@@ -13,7 +13,7 @@ import httpx
 import structlog
 from fastapi import FastAPI, Header, HTTPException, Request
 from fastapi.responses import HTMLResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 
 from inbound_gw_agent.config import get_settings
 from inbound_gw_agent.models.message import InboundMessage, MessageSource
@@ -1537,9 +1537,50 @@ function closeSettings(){
   document.getElementById("settings-ov").classList.remove("open");
   document.getElementById("settings-modal").classList.remove("open");
 }
+function _validateSettingsForm(msg){
+  const emailRaw = document.getElementById("cfg-email").value.trim();
+  if(emailRaw){
+    const emailRe = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+[.][a-zA-Z]{2,}$/;
+    const emails = emailRaw.split(",").map(e=>e.trim()).filter(Boolean);
+    for(const e of emails){
+      if(!emailRe.test(e)){
+        msg.style.color="var(--c-crit)";
+        msg.textContent="유효하지 않은 이메일 형식입니다: "+e;
+        return false;
+      }
+    }
+    if(emailRaw.length > 500){
+      msg.style.color="var(--c-crit)";
+      msg.textContent="이메일 주소가 너무 깁니다 (최대 500자).";
+      return false;
+    }
+  }
+  const epicKey = document.getElementById("cfg-epic-key").value.trim().toUpperCase();
+  if(epicKey && !/^[A-Z][A-Z0-9]*-[0-9]+$/.test(epicKey)){
+    msg.style.color="var(--c-crit)";
+    msg.textContent="Epic Key 형식이 올바르지 않습니다. 예: GW-5";
+    return false;
+  }
+  const userName = document.getElementById("cfg-name").value.trim();
+  if(userName.length > 100){
+    msg.style.color="var(--c-crit)";
+    msg.textContent="이름은 100자를 초과할 수 없습니다.";
+    return false;
+  }
+  const keywords = document.getElementById("cfg-keywords").value.trim();
+  if(keywords.length > 500){
+    msg.style.color="var(--c-crit)";
+    msg.textContent="키워드는 500자를 초과할 수 없습니다.";
+    return false;
+  }
+  return true;
+}
+
 async function saveSettings(){
   const btn = document.getElementById("cfg-save");
   const msg = document.getElementById("cfg-msg");
+  msg.textContent = "";
+  if(!_validateSettingsForm(msg)){ return; }
   btn.disabled = true;
   msg.style.color = "var(--tx3)";
   msg.textContent = "저장 중...";
@@ -1564,7 +1605,12 @@ async function saveSettings(){
       msg.textContent = "저장됐습니다. 다음 메일부터 새 설정이 적용됩니다.";
     } else {
       msg.style.color = "var(--c-crit)";
-      msg.textContent = "오류: "+(d.detail||"저장 실패");
+      // Pydantic v2 validation errors return detail as an array
+      if(Array.isArray(d.detail)){
+        msg.textContent = "입력 오류: " + d.detail.map(e=>e.msg.replace(/^Value error, /,"")).join("; ");
+      } else {
+        msg.textContent = "오류: "+(d.detail||"저장 실패");
+      }
     }
   }catch(e){
     msg.style.color = "var(--c-crit)";
@@ -2001,6 +2047,11 @@ class MessageMetaPatch(BaseModel):
     suggested_action: str | None = None
 
 
+_EMAIL_RE = _re.compile(r"^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$")
+_EPIC_KEY_RE = _re.compile(r"^[A-Z][A-Z0-9]*-\d+$")
+_NO_NEWLINE_RE = _re.compile(r"[\r\n]")
+
+
 class PersonalSettingsPayload(BaseModel):
     user_name: str = ""
     user_email: str = ""
@@ -2009,6 +2060,70 @@ class PersonalSettingsPayload(BaseModel):
     jira_story_epic_key: str = ""
     jira_story_sprint_name: str = ""
     jira_account_id: str = ""
+
+    @field_validator("user_name")
+    @classmethod
+    def validate_user_name(cls, v: str) -> str:
+        v = v.strip()
+        if _NO_NEWLINE_RE.search(v):
+            raise ValueError("이름에 줄바꿈 문자를 포함할 수 없습니다.")
+        if len(v) > 100:
+            raise ValueError("이름은 100자를 초과할 수 없습니다.")
+        return v
+
+    @field_validator("user_email")
+    @classmethod
+    def validate_user_email(cls, v: str) -> str:
+        v = v.strip()
+        if not v:
+            return v
+        if _NO_NEWLINE_RE.search(v):
+            raise ValueError("이메일에 줄바꿈 문자를 포함할 수 없습니다.")
+        if len(v) > 500:
+            raise ValueError("이메일 주소가 너무 깁니다 (최대 500자).")
+        emails = [e.strip() for e in v.split(",") if e.strip()]
+        for email in emails:
+            if not _EMAIL_RE.match(email):
+                raise ValueError(f"유효하지 않은 이메일 형식입니다: {email}")
+        return ",".join(emails)
+
+    @field_validator("user_keywords")
+    @classmethod
+    def validate_user_keywords(cls, v: str) -> str:
+        v = v.strip()
+        if _NO_NEWLINE_RE.search(v):
+            raise ValueError("키워드에 줄바꿈 문자를 포함할 수 없습니다.")
+        if len(v) > 500:
+            raise ValueError("키워드는 500자를 초과할 수 없습니다.")
+        return v
+
+    @field_validator("jira_story_epic_key")
+    @classmethod
+    def validate_epic_key(cls, v: str) -> str:
+        v = v.strip().upper()
+        if v and not _EPIC_KEY_RE.match(v):
+            raise ValueError("Epic Key 형식이 올바르지 않습니다 (예: GW-5).")
+        return v
+
+    @field_validator("jira_story_sprint_name")
+    @classmethod
+    def validate_sprint_name(cls, v: str) -> str:
+        v = v.strip()
+        if _NO_NEWLINE_RE.search(v):
+            raise ValueError("스프린트 이름에 줄바꿈 문자를 포함할 수 없습니다.")
+        if len(v) > 200:
+            raise ValueError("스프린트 이름은 200자를 초과할 수 없습니다.")
+        return v
+
+    @field_validator("jira_account_id")
+    @classmethod
+    def validate_account_id(cls, v: str) -> str:
+        v = v.strip()
+        if _NO_NEWLINE_RE.search(v):
+            raise ValueError("계정 ID에 줄바꿈 문자를 포함할 수 없습니다.")
+        if len(v) > 200:
+            raise ValueError("계정 ID는 200자를 초과할 수 없습니다.")
+        return v
 
 
 class StoryCreatePayload(BaseModel):
