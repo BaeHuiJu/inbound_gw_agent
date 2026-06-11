@@ -10,6 +10,7 @@ from pydantic import BaseModel, field_validator
 class MessageSource(str, Enum):
     OUTLOOK = "outlook"
     TEAMS = "teams"
+    MANUAL = "manual"
 
 
 class InboundMessage(BaseModel):
@@ -30,6 +31,8 @@ class InboundMessage(BaseModel):
     @property
     def full_text(self) -> str:
         parts = []
+        if self.sender:
+            parts.append(self.sender)
         if self.subject:
             parts.append(self.subject)
         parts.append(self.body)

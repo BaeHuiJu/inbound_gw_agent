@@ -11,15 +11,15 @@ _RULES: list[tuple[re.Pattern, IntentType, float]] = [
     (re.compile(r"긴급|장애|오류|에러|error|먹통|접속\s*불가|실패|오작동|끊김|문제\s*발생|서버.*다운|서비스.*중단", re.I), IntentType.URGENT, 0.95),
     (re.compile(r"안\s*됩니다|안됩니다|작동.*안|안.*작동|실행.*안|안.*실행|보안\s*이슈|해킹|침해|취약점", re.I), IntentType.URGENT, 0.9),
 
-    # SPAM — 광고/홍보 (TASK 이전에 먼저 매칭)
+    # SPAM — 광고/홍보 (동점 시 TASK보다 우선 — _TIE_BREAK_PRIORITY 참고)
     (re.compile(r"수신\s*거부|광고|홍보|할인|이벤트.*참여|무료.*제공|구독.*취소|unsubscribe|promotion", re.I), IntentType.SPAM, 0.95),
     (re.compile(r"특가|세일|sale|limited\s*offer|지금\s*신청|혜택.*받으세요|newsletter", re.I), IntentType.SPAM, 0.9),
 
-    # INFO — 시스템 알림 / 자동발송 (TASK보다 먼저 평가)
+    # INFO — 시스템 알림 / 자동발송 (가중치 0.92+로 TASK보다 높음. 동점 시에는 TASK 우선)
     (re.compile(r"atlassian\.net|jira@|github\.com|noreply@|no-reply@|donotreply@|do-not-reply@|notifications@", re.I), IntentType.INFO, 0.95),
     (re.compile(r"\[jira\]|\[github\]|\[confluence\]|\[slack\]|automated\s*message|auto-generated|자동\s*발송|시스템\s*알림", re.I), IntentType.INFO, 0.92),
     # Re:/Fw: 답장·전달 (threshold 0.8 미만 → LLM 최종 판단)
-    (re.compile(r"^(re|fwd?)\s*:", re.I), IntentType.INFO, 0.75),
+    (re.compile(r"(?:^|\s)(?:re|fwd?)\s*:", re.I), IntentType.INFO, 0.75),
     # 정보성/공지
     (re.compile(r"공지|안내|뉴스레터|보고서|리포트|report|주간\s*보고|월간\s*보고|결과\s*공유|업데이트\s*안내", re.I), IntentType.INFO, 0.9),
     (re.compile(r"공유\s*드립니다|알려\s*드립니다|안내\s*드립니다|첨부.*확인|참고\s*바랍니다|배포\s*드립니다", re.I), IntentType.INFO, 0.8),
@@ -38,6 +38,20 @@ _RULES: list[tuple[re.Pattern, IntentType, float]] = [
 ]
 
 
+# 동점 시 우선순위 — 행동이 필요한 분류(URGENT/TASK)를 정보성 분류(INFO)보다 우선한다.
+# 예: "보고서 양식 수정 처리해 주세요" → INFO(보고서)와 TASK(처리해)가 0.9 동점 → TASK 채택.
+# SPAM은 광고 메일이 작업 티켓으로 새지 않도록 TASK보다 앞에 둔다.
+_TIE_BREAK_PRIORITY = [
+    IntentType.URGENT,
+    IntentType.SPAM,
+    IntentType.TASK,
+    IntentType.PROJECT,
+    IntentType.INQUIRY,
+    IntentType.INFO,
+    IntentType.UNKNOWN,
+]
+
+
 class RuleClassifier:
     def classify(self, msg: InboundMessage) -> ClassifiedIntent:
         text = msg.full_text
@@ -53,10 +67,11 @@ class RuleClassifier:
         if not scores:
             return ClassifiedIntent(type=IntentType.UNKNOWN, confidence=0.0, classifier="rule")
 
-        best_type = max(scores, key=lambda k: scores[k])
+        best_score = max(scores.values())
+        best_type = next(t for t in _TIE_BREAK_PRIORITY if scores.get(t) == best_score)
         return ClassifiedIntent(
             type=best_type,
-            confidence=scores[best_type],
+            confidence=best_score,
             classifier="rule",
             keywords=list(set(matched_keywords)),
         )

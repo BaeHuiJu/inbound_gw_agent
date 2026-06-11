@@ -30,7 +30,8 @@ def teams_inquiry_msg() -> InboundMessage:
 
 
 @pytest.fixture
-def request_msg() -> InboundMessage:
+def task_msg() -> InboundMessage:
+    # "보고서"(INFO 0.9)와 "처리해"(TASK 0.9)가 동점인 문구 — tie-break로 TASK가 이겨야 함
     return InboundMessage(
         id="test-teams-002",
         source=MessageSource.TEAMS,
