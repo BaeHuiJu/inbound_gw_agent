@@ -36,30 +36,20 @@ if not hmac.compare_digest(x_webhook_secret or "", settings.webhook_secret):
 
 ---
 
-## 4. 이메일 ID 생성 로직 통일
+## 4. ✅ 이메일 ID 생성 로직 통일 (완료)
 **심각도:** Must / 버그  
-**파일:** `__main__.py`, `connectors/webhook_receiver.py`  
-**내용:** 동일 메일이 Graph API 수집과 webhook 양쪽으로 들어올 때 ID가 달라 중복 처리됨.
-```python
-# __main__.py
-raw_id = f"{received_at.isoformat()}|{subject}|{body[:50]}"
-
-# webhook_receiver.py
-raw_id = f"{payload.sender}|{received_at.isoformat()}|{payload.body[:50]}"
-```
-**해결:** ID 생성 로직을 공통 유틸 함수로 분리하여 일관성 확보.
+**파일:** `__main__.py`, `connectors/webhook_receiver.py`, `utils/message_id.py`  
+**내용:** 동일 메일이 Graph API 수집과 webhook 양쪽으로 들어올 때 ID가 달라 중복 처리됨.  
+**해결:** `utils/message_id.py`의 `generate_message_id(sender, received_at, subject)` 공통 함수로 분리.
+수신시각은 초 단위 UTC로 정규화, `sender`/`subject`의 `None`은 빈 문자열로 통일. 테스트: `tests/test_message_id.py`.
 
 ---
 
-## 5. `/dashboard/settings` 입력값 검증
+## 5. ✅ `/dashboard/settings` 입력값 검증 (완료)
 **심각도:** Must / 보안  
 **파일:** `connectors/webhook_receiver.py`  
 **내용:** `USER_NAME`/`USER_KEYWORDS` 값에 줄바꿈 문자 포함 시 `.env` 파싱 깨짐.  
-**해결:**
-```python
-"USER_NAME": payload.user_name.replace("\n", "").replace("\r", ""),
-"USER_KEYWORDS": payload.user_keywords.replace("\n", "").replace("\r", ""),
-```
+**해결:** `PersonalSettingsPayload`에 `field_validator` 추가 — 줄바꿈 포함 시 422 거부, 길이 제한, 이메일 형식 검증.
 
 ---
 
