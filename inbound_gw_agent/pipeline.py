@@ -44,9 +44,23 @@ class Pipeline:
             classifier=intent.classifier,
         )
 
+        settings = get_settings()
+
+        if intent.type == IntentType.URGENT and (
+            settings.teams_alert_webhook_url or settings.slack_alert_webhook_url
+        ):
+            from inbound_gw_agent.handlers.alert_handler import send_urgent_alert
+            await send_urgent_alert(
+                sender=msg.sender or "",
+                subject=msg.subject or "(제목 없음)",
+                body_preview=msg.body or "",
+                teams_url=settings.teams_alert_webhook_url,
+                slack_url=settings.slack_alert_webhook_url,
+            )
+
         jira_key: str | None = None
         _skip_jira = {IntentType.INFO, IntentType.SPAM, IntentType.UNKNOWN}
-        if not classify_only and self._handler and intent.type not in _skip_jira and get_settings().jira_auto_create:
+        if not classify_only and self._handler and intent.type not in _skip_jira and settings.jira_auto_create:
             jira_key = await self._handler.handle(msg, intent)
 
         self._store.mark_processed(

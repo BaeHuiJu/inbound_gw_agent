@@ -39,6 +39,10 @@ class Settings(BaseSettings):
     azure_tenant_id: str = "common"
     token_cache_path: str = ".token_cache.bin"
 
+    # 긴급 알림 웹훅 (설정 시 URGENT 분류 메일을 자동 발송)
+    teams_alert_webhook_url: str = ""
+    slack_alert_webhook_url: str = ""
+
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
 
 
