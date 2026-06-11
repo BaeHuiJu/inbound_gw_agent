@@ -49,6 +49,33 @@ JSON 외 다른 텍스트는 포함하지 마세요.
 
 _EMAIL_RE = re.compile(r"<(.+?)>")
 
+_JIRA_STATUS_MAP: dict[str, str] = {
+    "to do": "진행전", "open": "진행전", "backlog": "진행전", "할 일": "진행전", "해야 할 일": "진행전",
+    "in progress": "진행중", "in review": "진행중", "review": "진행중", "진행 중": "진행중",
+    "done": "완료", "closed": "완료", "resolved": "완료", "완료": "완료",
+}
+
+
+def _map_jira_status(raw: str) -> str:
+    return _JIRA_STATUS_MAP.get(raw.lower().strip(), "진행중")
+
+_FOOTER_TEAM_PATTERNS = [
+    re.compile(r"[가-힣a-zA-Z0-9]+팀"),
+    re.compile(r"[가-힣a-zA-Z0-9]+실"),
+    re.compile(r"[가-힣a-zA-Z0-9]+본부"),
+    re.compile(r"[가-힣a-zA-Z0-9]+회사"),
+]
+
+
+def _extract_team_from_footer(body: str) -> str:
+    """메일 꼬리말(하단 30줄)에서 팀→실→본부→회사 순으로 조직명을 추출한다."""
+    footer = "\n".join(body.splitlines()[-30:])
+    for pattern in _FOOTER_TEAM_PATTERNS:
+        match = pattern.search(footer)
+        if match:
+            return match.group(0)
+    return ""
+
 _DRAFT_REPLY_SYSTEM = """\
 당신은 업무 이메일 답장을 대신 작성해 주는 AI입니다.
 아래 수신 메일을 읽고, [USER_NAME] 본인이 보내는 답장 이메일 본문만 작성하세요.
@@ -130,7 +157,7 @@ class JiraTicketHandler(BaseHandler):
             "description": description,
             "issuetype": {"name": _ISSUE_TYPE.get(intent.type, "Task")},
             "priority": {"name": _JIRA_PRIORITY.get(intent.type, "Medium")},
-            "labels": [f"auto-{msg.source.value}", f"category-{intent.type.value}"],
+            "labels": [],
         }
 
         account_id = get_settings().jira_account_id.strip()
@@ -139,15 +166,16 @@ class JiraTicketHandler(BaseHandler):
             fields["assignee"] = ref
             fields["reporter"] = ref
 
-        for attempt in ["full", "no_assignee"]:
+        for attempt in ["full", "no_reporter", "no_assignee"]:
             try:
                 issue = await asyncio.to_thread(self._jira.create_issue, fields=fields)
                 log.info("jira_ticket_created", key=issue.key, intent=intent.type.value)
                 return issue.key
             except Exception as exc:
-                if attempt == "full" and ("assignee" in fields or "reporter" in fields):
-                    fields.pop("assignee", None)
+                if attempt == "full" and "reporter" in fields:
                     fields.pop("reporter", None)
+                elif attempt == "no_reporter" and "assignee" in fields:
+                    fields.pop("assignee", None)
                 else:
                     log.error("jira_ticket_failed", error=str(exc), msg_id=msg.id)
                     return None
@@ -200,10 +228,33 @@ class JiraTicketHandler(BaseHandler):
             raw = response.message.content.strip()
             if "```" in raw:
                 raw = raw.split("```")[-2].lstrip("json").strip()
-            return _json.loads(raw)
+            result = _json.loads(raw)
+            footer_team = _extract_team_from_footer(msg.body)
+            if footer_team:
+                result["team"] = footer_team
+            return result
         except Exception as exc:
             log.warning("story_analyze_failed", error=str(exc)[:120])
-            return {"team": "", "task_summary": msg.subject or "", "deadline_str": None, "is_overdue": False}
+            footer_team = _extract_team_from_footer(msg.body)
+            return {"team": footer_team, "task_summary": msg.subject or "", "deadline_str": None, "is_overdue": False}
+
+    async def update_issue_summary(self, jira_key: str, new_summary: str) -> None:
+        issue = await asyncio.to_thread(self._jira.issue, jira_key)
+        await asyncio.to_thread(issue.update, fields={"summary": new_summary})
+        log.info("jira_issue_updated", key=jira_key)
+
+    async def get_issue_status(self, jira_key: str) -> str:
+        issue = await asyncio.to_thread(self._jira.issue, jira_key)
+        raw: str = issue.fields.status.name
+        return _map_jira_status(raw)
+
+    async def get_transitions(self, jira_key: str) -> list[dict]:
+        transitions = await asyncio.to_thread(self._jira.transitions, jira_key)
+        return [{"id": t["id"], "name": t["name"]} for t in transitions]
+
+    async def apply_transition(self, jira_key: str, transition_id: str) -> None:
+        await asyncio.to_thread(self._jira.transition_issue, jira_key, transition_id)
+        log.info("jira_transition_applied", key=jira_key, transition_id=transition_id)
 
     async def generate_draft_reply(self, msg: InboundMessage) -> str:
         settings = get_settings()
@@ -336,15 +387,12 @@ class JiraTicketHandler(BaseHandler):
             f"보고자 : {user_name}\n\n"
             f"[메일 본문]\n{msg.body}"
         )
-        all_labels = [f"auto-{msg.source.value}", "story-from-mail"]
-        if labels:
-            all_labels.extend(labels)
         fields: dict = {
             "project": {"key": self._project},
             "summary": summary,
             "description": description,
             "issuetype": {"name": "Story"},
-            "labels": all_labels,
+            "labels": labels or [],
         }
 
         if priority:
@@ -376,16 +424,17 @@ class JiraTicketHandler(BaseHandler):
             fields["reporter"] = ref
 
         # 생성 시도 — 실패 시 필드 제거 후 재시도
-        for attempt in ["full", "no_assignee", "nextgen_epic", "no_epic", "no_startdate"]:
+        for attempt in ["full", "no_reporter", "no_assignee", "nextgen_epic", "no_epic", "no_startdate"]:
             try:
                 issue = await asyncio.to_thread(self._jira.create_issue, fields=fields)
                 log.info("jira_story_created", key=issue.key, attempt=attempt)
                 return issue.key
             except Exception as exc:
                 err = str(exc)
-                if attempt == "full" and ("assignee" in fields or "reporter" in fields):
-                    fields.pop("assignee", None)
+                if attempt == "full" and "reporter" in fields:
                     fields.pop("reporter", None)
+                elif attempt == "no_reporter" and "assignee" in fields:
+                    fields.pop("assignee", None)
                 elif attempt == "no_assignee" and "customfield_10014" in fields:
                     # Classic Epic 실패 → Next-gen parent 방식 시도
                     fields.pop("customfield_10014")
